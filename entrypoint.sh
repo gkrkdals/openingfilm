@@ -4,6 +4,10 @@
 echo "Running prisma db push..."
 npx prisma db push --accept-data-loss
 
+# 초기 기본 데이터 시딩 실행
+echo "Running database seed..."
+node prisma/seed.js
+
 # Next.js 서비스 기동
 echo "Starting Next.js application..."
 exec node server.js
