@@ -1,0 +1,55 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. 메인 텍스트 문구
+model SiteContent {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// 2. 포트폴리오 비디오
+model Portfolio {
+  id          String   @id @default(uuid())
+  type        String   // 'regular' | 'shorts'
+  title       String
+  youtubeId   String
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// 3. 고객 후기
+model Review {
+  id          String   @id @default(uuid())
+  author      String
+  content     String
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// 4. 예약 신청서
+model Reservation {
+  id              String   @id @default(uuid())
+  groomName       String?
+  brideName       String?
+  weddingDate     String
+  weddingTime     String
+  weddingLocation String
+  contact         String
+  status          String   @default("pending") // 'pending' | 'approved' | 'cancelled'
+  createdAt       DateTime @default(now())
+}
+
+// 5. 어드민 유저
+model AdminUser {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // 암호화된 비밀번호
+  createdAt DateTime @default(now())
+}

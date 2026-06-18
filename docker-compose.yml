@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  web:
+    container_name: openingfilm-web
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/openingfilm-web:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:./data/dev.db
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - /var/www/openingfilm/data:/app/prisma/data
+    env_file:
+      - .env

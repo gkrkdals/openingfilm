@@ -1,26 +1,315 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f8f6f2;
+  --ink: #11110f;
+  --ink-soft: #2a2926;
+  --muted: #7b7468;
+  --accent: #b8a37b;
+  --mist: #eeebe4;
+  --dark: #0f0f10;
+  --border: #dedad2;
+  --card: #151514;
+  --shadow: 0 18px 42px rgba(17, 17, 15, 0.16);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+
+.font-display {
+  font-family: var(--font-display), "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.fade-in {
+  animation: fadeIn 0.8s ease-out both;
+}
+
+.fade-up {
+  animation: fadeUp 0.9s ease-out both;
+}
+
+.float-soft {
+  animation: floatSoft 6s ease-in-out infinite;
+}
+
+.rise-up {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: riseUp 0.8s ease-out forwards;
+}
+
+.rise-up-1 {
+  animation-delay: 0.05s;
+}
+
+.rise-up-2 {
+  animation-delay: 0.22s;
+}
+
+.reveal-item {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.reveal-item.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-group.is-visible .reveal-item {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lift-hover {
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.lift-hover:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 18px 36px rgba(15, 15, 16, 0.35);
+}
+
+.promise-divider {
+  margin-top: 12px;
+  margin-bottom: 14px;
+  height: 2px;
+  position: relative;
+}
+
+.promise-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.6s ease;
+  transition-delay: var(--divider-delay, 0ms);
+}
+
+.reveal-item.is-visible .promise-divider::after {
+  transform: scaleX(1);
+}
+
+.reveal-group.is-visible .promise-divider::after {
+  transform: scaleX(1);
+}
+
+.price-panel {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.price-panel.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.price-stage {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.price-stage.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.price-panel.is-visible .price-stage {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.portfolio-panel {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.portfolio-panel.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.portfolio-stage {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.portfolio-stage.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.portfolio-panel.is-visible .portfolio-stage {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.review-panel {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.review-panel.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.review-stage {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.review-stage.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.marquee {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.marquee-track {
+  display: inline-flex;
+  gap: 2.5rem;
+  white-space: nowrap;
+  animation: marquee 16s linear infinite;
+}
+
+.marquee-track span {
+  padding-right: 2.5rem;
+}
+
+.shorts-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.shorts-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.moving-line {
+  position: relative;
+  height: 1px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.moving-line::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 120px;
+  background: linear-gradient(
+    90deg,
+    rgba(238, 235, 228, 0),
+    rgba(184, 163, 123, 0.9) 45%,
+    rgba(184, 163, 123, 0.9) 55%,
+    rgba(238, 235, 228, 0)
+  );
+}
+
+.moving-line-right::after {
+  animation: lineSweepRight 6s linear infinite;
+}
+
+.moving-line-left::after {
+  animation: lineSweepLeft 6s linear infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatSoft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes riseUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes lineSweepRight {
+  0% {
+    transform: translateX(-140px);
+  }
+  100% {
+    transform: translateX(calc(100vw + 140px));
+  }
+}
+
+@keyframes lineSweepLeft {
+  0% {
+    transform: translateX(calc(100vw + 140px));
+  }
+  100% {
+    transform: translateX(-140px);
+  }
 }
