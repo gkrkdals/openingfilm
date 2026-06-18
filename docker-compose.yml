@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   web:
     container_name: openingfilm-web
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/openingfilm-web:latest
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/openingfilm:latest
     restart: always
     ports:
       - "3000:3000"
