@@ -28,6 +28,8 @@ body {
   background: var(--paper);
   color: var(--ink);
   overflow-x: hidden;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .font-display {
