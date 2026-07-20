@@ -36,8 +36,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - 이미지 파일 확장자들
+     * - favicon.ico, robots.txt, sitemap.xml
+     * - 이미지 및 HTML 파일 확장자들
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|html)$).*)",
   ],
 };
