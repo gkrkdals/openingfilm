@@ -51,6 +51,23 @@ export default function RootLayout({
       className={`${bodyFont.variable} ${displayFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[var(--paper)] text-[var(--ink)]">
+        {/* 네이버 연관 채널 연동을 위한 JSON-LD 구조화 데이터 */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "http://schema.org",
+              "@type": "Organization",
+              "name": "오프닝필름",
+              "url": "https://openingfilm.co.kr",
+              "sameAs": [
+                "https://www.instagram.com/opening.film",
+                "https://www.youtube.com/@openingfilm-h3f",
+                "http://pf.kakao.com/_DaAbX",
+              ],
+            }),
+          }}
+        />
         {children}
       </body>
     </html>
