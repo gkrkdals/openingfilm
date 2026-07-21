@@ -3,6 +3,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import {
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // Define TypeScript types corresponding to Prisma schema
 interface SiteContent {
@@ -37,6 +54,95 @@ interface ReservationItem {
   createdAt: string;
 }
 
+/**
+ * 드래그로 순서를 바꿀 수 있는 영상 카드.
+ * 드래그 리스너는 핸들에만 붙인다 — 카드 전체에 붙이면 "삭제" 클릭이 드래그로 먹힌다.
+ */
+function SortableVideoCard({
+  video,
+  onDelete,
+}: {
+  video: PortfolioItem;
+  onDelete: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: video.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`relative flex items-center gap-3 border border-black/5 rounded-2xl p-4 bg-white shadow-sm ${
+        isDragging ? "z-10 opacity-50" : ""
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`${video.title} 순서 이동`}
+        className="touch-none cursor-grab active:cursor-grabbing px-1 text-lg leading-none text-[var(--muted)] hover:text-[var(--ink)]"
+      >
+        ⠿
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-sm truncate">{video.title}</p>
+        <p className="text-xs text-[var(--muted)] mt-0.5 truncate">ID: {video.youtubeId}</p>
+      </div>
+      <button
+        onClick={() => onDelete(video.id)}
+        className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer shrink-0"
+      >
+        삭제
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 한 종류(regular/shorts)의 영상 목록. 목록끼리는 서로 독립된 DndContext를 쓰므로
+ * 목록 간 이동(= type 변경)은 일어나지 않는다.
+ */
+function SortableVideoList({
+  videos,
+  onReorder,
+  onDelete,
+  emptyMessage,
+}: {
+  videos: PortfolioItem[];
+  onReorder: (activeId: string, overId: string) => void;
+  onDelete: (id: string) => void;
+  emptyMessage: string;
+}) {
+  const sensors = useSensors(
+    // 5px 이상 움직여야 드래그로 인식 — 핸들의 클릭/포커스를 방해하지 않도록
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onReorder(String(active.id), String(over.id));
+  };
+
+  if (videos.length === 0) {
+    return <p className="text-xs text-[var(--muted)] py-4 text-center">{emptyMessage}</p>;
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={videos.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-3">
+          {videos.map((video) => (
+            <SortableVideoCard key={video.id} video={video} onDelete={onDelete} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
@@ -52,6 +158,7 @@ export default function AdminDashboard() {
   // Action states
   const [isSavingText, setIsSavingText] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [reorderStatus, setReorderStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
 
   // New item form states
   const [newVideo, setNewVideo] = useState({ title: "", youtubeId: "", type: "regular" });
@@ -148,7 +255,8 @@ export default function AdminDashboard() {
     if (!newVideo.title || !newVideo.youtubeId) return;
 
     try {
-      const orderIndex = portfolios.length;
+      // orderIndex는 type별 0..n-1 시퀀스이므로 같은 종류의 개수를 쓴다.
+      const orderIndex = portfolios.filter((v) => v.type === newVideo.type).length;
       const res = await fetch("/api/admin/portfolio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,6 +288,47 @@ export default function AdminDashboard() {
       setPortfolios((prev) => prev.filter((item) => item.id !== id));
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // 드래그 순서 변경 — 낙관적 갱신 후 저장, 실패하면 이전 순서로 롤백
+  const handleReorderVideos = async (type: string, activeId: string, overId: string) => {
+    const prevPortfolios = portfolios;
+
+    const list = prevPortfolios.filter((v) => v.type === type);
+    const oldIndex = list.findIndex((v) => v.id === activeId);
+    const newIndex = list.findIndex((v) => v.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // 해당 종류만 재배열하고 0..n-1로 다시 매긴다. 다른 종류는 건드리지 않는다.
+    const reordered = arrayMove(list, oldIndex, newIndex).map((video, idx) => ({
+      ...video,
+      orderIndex: idx,
+    }));
+
+    let cursor = 0;
+    const next = prevPortfolios.map((v) => (v.type === type ? reordered[cursor++] : v));
+
+    setPortfolios(next);
+    setReorderStatus("saving");
+
+    try {
+      const res = await fetch("/api/admin/portfolio/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          reordered.map((video) => ({ id: video.id, order_index: video.orderIndex }))
+        ),
+      });
+
+      if (!res.ok) throw new Error("Failed to reorder videos");
+      setReorderStatus("success");
+    } catch (err) {
+      console.error(err);
+      setPortfolios(prevPortfolios);
+      setReorderStatus("error");
+    } finally {
+      setTimeout(() => setReorderStatus("idle"), 3000);
     }
   };
 
@@ -541,56 +690,45 @@ export default function AdminDashboard() {
               </div>
 
               {/* 목록 */}
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* 가로형 비디오 */}
-                <div>
-                  <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">일반 비디오 목록 ({portfolios.filter(v => v.type === "regular").length})</h3>
-                  <div className="space-y-3">
-                    {portfolios
-                      .filter((v) => v.type === "regular")
-                      .map((video) => (
-                        <div key={video.id} className="flex items-center justify-between border border-black/5 rounded-2xl p-4 bg-white shadow-sm">
-                          <div>
-                            <p className="font-semibold text-sm">{video.title}</p>
-                            <p className="text-xs text-[var(--muted)] mt-0.5">ID: {video.youtubeId}</p>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteVideo(video.id)}
-                            className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      ))}
-                    {portfolios.filter(v => v.type === "regular").length === 0 && (
-                      <p className="text-xs text-[var(--muted)] py-4 text-center">등록된 가로형 영상이 없습니다.</p>
-                    )}
-                  </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장되고 실제 페이지에 반영됩니다.
+                  </p>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
+                  )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
                 </div>
 
-                {/* 쇼츠 비디오 */}
-                <div>
-                  <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">숏폼(Shorts) 목록 ({portfolios.filter(v => v.type === "shorts").length})</h3>
-                  <div className="space-y-3">
-                    {portfolios
-                      .filter((v) => v.type === "shorts")
-                      .map((video) => (
-                        <div key={video.id} className="flex items-center justify-between border border-black/5 rounded-2xl p-4 bg-white shadow-sm">
-                          <div>
-                            <p className="font-semibold text-sm">{video.title}</p>
-                            <p className="text-xs text-[var(--muted)] mt-0.5">ID: {video.youtubeId}</p>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteVideo(video.id)}
-                            className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      ))}
-                    {portfolios.filter(v => v.type === "shorts").length === 0 && (
-                      <p className="text-xs text-[var(--muted)] py-4 text-center">등록된 숏폼 영상이 없습니다.</p>
-                    )}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* 가로형 비디오 */}
+                  <div>
+                    <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">일반 비디오 목록 ({portfolios.filter(v => v.type === "regular").length})</h3>
+                    <SortableVideoList
+                      videos={portfolios.filter((v) => v.type === "regular")}
+                      onReorder={(activeId, overId) => handleReorderVideos("regular", activeId, overId)}
+                      onDelete={handleDeleteVideo}
+                      emptyMessage="등록된 가로형 영상이 없습니다."
+                    />
+                  </div>
+
+                  {/* 쇼츠 비디오 */}
+                  <div>
+                    <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">숏폼(Shorts) 목록 ({portfolios.filter(v => v.type === "shorts").length})</h3>
+                    <SortableVideoList
+                      videos={portfolios.filter((v) => v.type === "shorts")}
+                      onReorder={(activeId, overId) => handleReorderVideos("shorts", activeId, overId)}
+                      onDelete={handleDeleteVideo}
+                      emptyMessage="등록된 숏폼 영상이 없습니다."
+                    />
                   </div>
                 </div>
               </div>

@@ -25,13 +25,13 @@ const DEFAULT_SHORTS = [
 ];
 
 export default function PortfolioSection({ videos = [] }: PortfolioSectionProps) {
-  const regularVideos = videos.length > 0 
-    ? videos.filter((v) => v.type === "regular")
-    : DEFAULT_REGULAR;
-  
-  const shortsVideos = videos.length > 0 
-    ? videos.filter((v) => v.type === "shorts")
-    : DEFAULT_SHORTS;
+  // 목록별로 판정한다. 전체 배열 길이로 판정하면 한쪽 종류만 등록됐을 때
+  // 나머지 섹션에 기본 샘플이 계속 노출된다.
+  const regular = videos.filter((v) => v.type === "regular");
+  const shorts = videos.filter((v) => v.type === "shorts");
+
+  const regularVideos = regular.length > 0 ? regular : DEFAULT_REGULAR;
+  const shortsVideos = shorts.length > 0 ? shorts : DEFAULT_SHORTS;
 
   return (
     <section id="portfolio" className="py-20">
