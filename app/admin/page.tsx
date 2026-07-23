@@ -15,11 +15,24 @@ import {
 import {
   SortableContext,
   arrayMove,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import {
+  PRICE_ROW1_CARDS,
+  PRICE_ROW2_CARDS,
+  PRICE_ROW1_ORDER_KEY,
+  PRICE_ROW2_ORDER_KEY,
+  PRICE_ROW1_TEXT,
+  PRICE_ROW2_TEXT,
+  PRICE_TEXT_DEFAULTS,
+  applyPriceOrder,
+  type PriceTextField,
+  type PriceTextGroup,
+} from "../components/priceCards";
 
 // Define TypeScript types corresponding to Prisma schema
 interface SiteContent {
@@ -38,6 +51,13 @@ interface PortfolioItem {
 interface ReviewItem {
   id: string;
   author: string;
+  content: string;
+  orderIndex: number;
+}
+
+interface PromiseItem {
+  id: string;
+  title: string;
   content: string;
   orderIndex: number;
 }
@@ -143,16 +163,399 @@ function SortableVideoList({
   );
 }
 
+/**
+ * 드래그로 순서를 바꿀 수 있는 후기 카드.
+ * 영상 카드와 마찬가지로 드래그 리스너는 핸들에만 붙여 "삭제" 클릭과 충돌하지 않게 한다.
+ */
+function SortableReviewCard({
+  review,
+  onDelete,
+}: {
+  review: ReviewItem;
+  onDelete: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: review.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex flex-col justify-between border border-black/5 rounded-2xl p-5 bg-white shadow-sm ${
+        isDragging ? "z-10 opacity-50" : ""
+      }`}
+    >
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label={`${review.author} 후기 순서 이동`}
+            className="touch-none cursor-grab active:cursor-grabbing text-lg leading-none text-[var(--muted)] hover:text-[var(--ink)]"
+          >
+            ⠿
+          </button>
+          <p className="text-xs text-[var(--muted)] font-bold">{review.author}</p>
+        </div>
+        <p className="text-xs leading-relaxed text-[var(--ink-soft)] whitespace-pre-wrap">{review.content}</p>
+      </div>
+      <div className="mt-4 border-t border-black/5 pt-3 flex justify-end">
+        <button
+          onClick={() => onDelete(review.id)}
+          className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
+        >
+          삭제
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 후기 목록. 후기는 3열 그리드로 배치되므로 rectSortingStrategy를 쓴다.
+ */
+function SortableReviewList({
+  reviews,
+  onReorder,
+  onDelete,
+}: {
+  reviews: ReviewItem[];
+  onReorder: (activeId: string, overId: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onReorder(String(active.id), String(over.id));
+  };
+
+  if (reviews.length === 0) {
+    return (
+      <p className="col-span-full text-xs text-[var(--muted)] py-8 text-center">등록된 후기가 없습니다.</p>
+    );
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={reviews.map((r) => r.id)} strategy={rectSortingStrategy}>
+        <div className="grid gap-4 md:grid-cols-3">
+          {reviews.map((review) => (
+            <SortableReviewCard key={review.id} review={review} onDelete={onDelete} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
+ * 드래그로 순서를 바꾸고 제목/내용을 직접 편집할 수 있는 약속 카드.
+ */
+function SortablePromiseCard({
+  promise,
+  onChange,
+  onSave,
+  onDelete,
+  isSaving,
+}: {
+  promise: PromiseItem;
+  onChange: (id: string, patch: Partial<Pick<PromiseItem, "title" | "content">>) => void;
+  onSave: (id: string) => void;
+  onDelete: (id: string) => void;
+  isSaving: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: promise.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`border border-black/5 rounded-2xl p-4 bg-white shadow-sm ${
+        isDragging ? "z-10 opacity-50" : ""
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`${promise.title} 순서 이동`}
+          className="touch-none cursor-grab active:cursor-grabbing px-1 pt-2 text-lg leading-none text-[var(--muted)] hover:text-[var(--ink)]"
+        >
+          ⠿
+        </button>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div>
+            <label className="block text-[11px] font-bold text-[var(--muted)] mb-1">제목</label>
+            <input
+              type="text"
+              value={promise.title}
+              onChange={(e) => onChange(promise.id, { title: e.target.value })}
+              className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-semibold focus:border-[var(--accent)] focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-[var(--muted)] mb-1">내용</label>
+            <textarea
+              rows={2}
+              value={promise.content}
+              onChange={(e) => onChange(promise.id, { content: e.target.value })}
+              className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs focus:border-[var(--accent)] focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => onDelete(promise.id)}
+              className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
+            >
+              삭제
+            </button>
+            <button
+              type="button"
+              onClick={() => onSave(promise.id)}
+              disabled={isSaving}
+              className="rounded-full bg-[var(--ink)] text-white px-4 py-1.5 text-xs font-semibold hover:bg-[var(--accent)] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isSaving ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 약속 카드 목록. 단일 시퀀스이므로 세로 정렬 전략을 쓴다.
+ */
+function SortablePromiseList({
+  promises,
+  onChange,
+  onSave,
+  onDelete,
+  onReorder,
+  savingId,
+}: {
+  promises: PromiseItem[];
+  onChange: (id: string, patch: Partial<Pick<PromiseItem, "title" | "content">>) => void;
+  onSave: (id: string) => void;
+  onDelete: (id: string) => void;
+  onReorder: (activeId: string, overId: string) => void;
+  savingId: string | null;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onReorder(String(active.id), String(over.id));
+  };
+
+  if (promises.length === 0) {
+    return (
+      <p className="text-xs text-[var(--muted)] py-8 text-center">등록된 약속 카드가 없습니다.</p>
+    );
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={promises.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-3">
+          {promises.map((promise) => (
+            <SortablePromiseCard
+              key={promise.id}
+              promise={promise}
+              onChange={onChange}
+              onSave={onSave}
+              onDelete={onDelete}
+              isSaving={savingId === promise.id}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
+ * 라벨만 있는 정렬 카드 — 가격 섹션 카드 순서 변경처럼 "내용은 코드에 고정, 순서만 변경"할 때 쓴다.
+ */
+function SortableLabelCard({ id, label }: { id: string; label: string }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-3 border border-black/5 rounded-2xl p-4 bg-white shadow-sm ${
+        isDragging ? "z-10 opacity-50" : ""
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`${label} 순서 이동`}
+        className="touch-none cursor-grab active:cursor-grabbing px-1 text-lg leading-none text-[var(--muted)] hover:text-[var(--ink)]"
+      >
+        ⠿
+      </button>
+      <span className="text-sm font-semibold text-[var(--ink)]">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * 라벨 목록 정렬. items는 화면에 보이는 순서대로 넘긴다.
+ */
+function SortableLabelList({
+  items,
+  onReorder,
+}: {
+  items: { id: string; label: string }[];
+  onReorder: (activeId: string, overId: string) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    onReorder(String(active.id), String(over.id));
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map((it) => it.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-3">
+          {items.map((it) => (
+            <SortableLabelCard key={it.id} id={it.id} label={it.label} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
+ * 클릭하면 편집으로 바뀌는 텍스트 필드. 값은 상위 siteContent에 저장되고, 실제 저장은
+ * "변경사항 저장" 버튼(폼 제출)으로 일괄 반영된다.
+ */
+function EditablePriceField({
+  field,
+  value,
+  onChange,
+  isEditing,
+  onStartEdit,
+  onStopEdit,
+}: {
+  field: PriceTextField;
+  value: string;
+  onChange: (value: string) => void;
+  isEditing: boolean;
+  onStartEdit: () => void;
+  onStopEdit: () => void;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-bold text-[var(--muted)] mb-1">{field.label}</label>
+      {isEditing ? (
+        field.multiline ? (
+          <textarea
+            autoFocus
+            rows={3}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onStopEdit}
+            className="w-full rounded-xl border border-[var(--accent)] bg-white px-3 py-2 text-xs focus:outline-none"
+          />
+        ) : (
+          <input
+            type="text"
+            autoFocus
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onStopEdit}
+            className="w-full rounded-xl border border-[var(--accent)] bg-white px-3 py-2 text-xs focus:outline-none"
+          />
+        )
+      ) : (
+        <button
+          type="button"
+          onClick={onStartEdit}
+          title="클릭하여 편집"
+          className="w-full text-left rounded-xl border border-black/10 bg-white px-3 py-2 text-xs whitespace-pre-wrap hover:border-[var(--accent)] transition-colors cursor-text min-h-[2.25rem]"
+        >
+          {value ? (
+            value
+          ) : (
+            <span className="italic text-[var(--muted)]">비어 있음 (클릭하여 입력)</span>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 카드 하나의 텍스트 필드 묶음을 렌더한다. */
+function PriceTextCard({
+  group,
+  getValue,
+  onChange,
+  editingKey,
+  setEditingKey,
+}: {
+  group: PriceTextGroup;
+  getValue: (key: string) => string;
+  onChange: (key: string, value: string) => void;
+  editingKey: string | null;
+  setEditingKey: (key: string | null) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-black/5 bg-[var(--paper)] p-4 space-y-3">
+      <p className="text-xs font-bold text-[var(--ink)]">{group.cardLabel}</p>
+      {group.fields.map((field) => (
+        <EditablePriceField
+          key={field.key}
+          field={field}
+          value={getValue(field.key)}
+          onChange={(v) => onChange(field.key, v)}
+          isEditing={editingKey === field.key}
+          onStartEdit={() => setEditingKey(field.key)}
+          onStopEdit={() => setEditingKey(null)}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<"text" | "portfolio" | "review" | "reservation">("text");
+  const [activeTab, setActiveTab] = useState<
+    "text" | "portfolio" | "review" | "promise" | "reservation"
+  >("text");
   const [loading, setLoading] = useState(true);
 
   // States for DB data
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
   const [portfolios, setPortfolios] = useState<PortfolioItem[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [promises, setPromises] = useState<PromiseItem[]>([]);
   const [reservations, setReservations] = useState<ReservationItem[]>([]);
 
   // Action states
@@ -163,6 +566,15 @@ export default function AdminDashboard() {
   // New item form states
   const [newVideo, setNewVideo] = useState({ title: "", youtubeId: "", type: "regular" });
   const [newReview, setNewReview] = useState({ author: "", content: "" });
+  const [newPromise, setNewPromise] = useState({ title: "", content: "" });
+  const [savingPromiseId, setSavingPromiseId] = useState<string | null>(null);
+
+  // 가격 섹션 카드 순서(id 배열). 내용은 코드에 고정, 순서만 관리.
+  const [priceRow1, setPriceRow1] = useState<string[]>(PRICE_ROW1_CARDS.map((c) => c.id));
+  const [priceRow2, setPriceRow2] = useState<string[]>(PRICE_ROW2_CARDS.map((c) => c.id));
+
+  // 가격 카드 텍스트 편집 — 현재 클릭해서 편집 중인 필드 key(하나만)
+  const [editingPriceKey, setEditingPriceKey] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -176,6 +588,8 @@ export default function AdminDashboard() {
           contentMap[item.key] = item.value;
         });
         setSiteContent(contentMap);
+        setPriceRow1(applyPriceOrder(PRICE_ROW1_CARDS, contentMap[PRICE_ROW1_ORDER_KEY]));
+        setPriceRow2(applyPriceOrder(PRICE_ROW2_CARDS, contentMap[PRICE_ROW2_ORDER_KEY]));
       }
 
       // 2. Fetch portfolios
@@ -190,6 +604,13 @@ export default function AdminDashboard() {
       if (resRev.ok) {
         const revData = await resRev.json();
         setReviews(revData || []);
+      }
+
+      // 3-1. Fetch promise cards
+      const resProm = await fetch("/api/admin/promise");
+      if (resProm.ok) {
+        const promData = await resProm.json();
+        setPromises(promData || []);
       }
 
       // 4. Fetch reservations
@@ -372,6 +793,184 @@ export default function AdminDashboard() {
     }
   };
 
+  // 후기 드래그 순서 변경 — 낙관적 갱신 후 저장, 실패하면 이전 순서로 롤백
+  const handleReorderReviews = async (activeId: string, overId: string) => {
+    const prevReviews = reviews;
+
+    const oldIndex = prevReviews.findIndex((r) => r.id === activeId);
+    const newIndex = prevReviews.findIndex((r) => r.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // 0..n-1로 orderIndex를 다시 매긴다.
+    const reordered = arrayMove(prevReviews, oldIndex, newIndex).map((review, idx) => ({
+      ...review,
+      orderIndex: idx,
+    }));
+
+    setReviews(reordered);
+    setReorderStatus("saving");
+
+    try {
+      const res = await fetch("/api/admin/review/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          reordered.map((review) => ({ id: review.id, order_index: review.orderIndex }))
+        ),
+      });
+
+      if (!res.ok) throw new Error("Failed to reorder reviews");
+      setReorderStatus("success");
+    } catch (err) {
+      console.error(err);
+      setReviews(prevReviews);
+      setReorderStatus("error");
+    } finally {
+      setTimeout(() => setReorderStatus("idle"), 3000);
+    }
+  };
+
+  // 3-1. Promise card actions
+  const handleAddPromise = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPromise.title || !newPromise.content) return;
+
+    try {
+      const orderIndex = promises.length;
+      const res = await fetch("/api/admin/promise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newPromise.title,
+          content: newPromise.content,
+          order_index: orderIndex,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to add promise card");
+      const data = await res.json();
+
+      setPromises((prev) => [...prev, data]);
+      setNewPromise({ title: "", content: "" });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 로컬 편집(입력) — 저장은 "저장" 버튼으로.
+  const handlePromiseChange = (
+    id: string,
+    patch: Partial<Pick<PromiseItem, "title" | "content">>
+  ) => {
+    setPromises((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  };
+
+  const handleSavePromise = async (id: string) => {
+    const target = promises.find((p) => p.id === id);
+    if (!target) return;
+    if (!target.title || !target.content) return;
+
+    setSavingPromiseId(id);
+    try {
+      const res = await fetch("/api/admin/promise", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title: target.title, content: target.content }),
+      });
+      if (!res.ok) throw new Error("Failed to update promise card");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingPromiseId(null);
+    }
+  };
+
+  const handleDeletePromise = async (id: string) => {
+    if (!confirm("정말 이 약속 카드를 삭제하시겠습니까?")) return;
+    try {
+      const res = await fetch(`/api/admin/promise?id=${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete promise card");
+      setPromises((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 약속 카드 드래그 순서 변경 — 낙관적 갱신 후 저장, 실패하면 이전 순서로 롤백
+  const handleReorderPromises = async (activeId: string, overId: string) => {
+    const prevPromises = promises;
+
+    const oldIndex = prevPromises.findIndex((p) => p.id === activeId);
+    const newIndex = prevPromises.findIndex((p) => p.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(prevPromises, oldIndex, newIndex).map((promise, idx) => ({
+      ...promise,
+      orderIndex: idx,
+    }));
+
+    setPromises(reordered);
+    setReorderStatus("saving");
+
+    try {
+      const res = await fetch("/api/admin/promise/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          reordered.map((promise) => ({ id: promise.id, order_index: promise.orderIndex }))
+        ),
+      });
+
+      if (!res.ok) throw new Error("Failed to reorder promise cards");
+      setReorderStatus("success");
+    } catch (err) {
+      console.error(err);
+      setPromises(prevPromises);
+      setReorderStatus("error");
+    } finally {
+      setTimeout(() => setReorderStatus("idle"), 3000);
+    }
+  };
+
+  // 가격 카드 순서 변경 — 순서(id CSV)만 siteContent에 저장. 낙관적 갱신 후 저장, 실패 시 롤백.
+  const handleReorderPriceCards = async (row: 1 | 2, activeId: string, overId: string) => {
+    const current = row === 1 ? priceRow1 : priceRow2;
+    const setter = row === 1 ? setPriceRow1 : setPriceRow2;
+    const key = row === 1 ? PRICE_ROW1_ORDER_KEY : PRICE_ROW2_ORDER_KEY;
+
+    const oldIndex = current.indexOf(activeId);
+    const newIndex = current.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const prev = current;
+    const next = arrayMove(current, oldIndex, newIndex);
+    const value = next.join(",");
+
+    setter(next);
+    setSiteContent((c) => ({ ...c, [key]: value }));
+    setReorderStatus("saving");
+
+    try {
+      const res = await fetch("/api/admin/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ key, value }]),
+      });
+
+      if (!res.ok) throw new Error("Failed to save price card order");
+      setReorderStatus("success");
+    } catch (err) {
+      console.error(err);
+      setter(prev);
+      setSiteContent((c) => ({ ...c, [key]: prev.join(",") }));
+      setReorderStatus("error");
+    } finally {
+      setTimeout(() => setReorderStatus("idle"), 3000);
+    }
+  };
+
   // 4. Reservation actions
   const handleUpdateResStatus = async (id: string, currentStatus: string) => {
     const nextStatusMap: Record<string, string> = {
@@ -454,6 +1053,7 @@ export default function AdminDashboard() {
             { id: "text", label: "페이지 텍스트" },
             { id: "portfolio", label: "포트폴리오 관리" },
             { id: "review", label: "고객 후기" },
+            { id: "promise", label: "약속 카드" },
             { id: "reservation", label: "예약 내역 조회" },
           ].map((tab) => (
             <button
@@ -637,6 +1237,92 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* 가격 카드 순서 변경 — 내용은 코드에 고정, 순서만 드래그로 변경(즉시 저장) */}
+              <div className="border-t border-black/5 pt-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-bold text-[var(--accent)]">가격 섹션 카드 순서</h3>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
+                  )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장되고 실제 페이지에 반영됩니다. 카드 내용은 변경되지 않고 순서만 바뀝니다. (윗줄/아랫줄은 각 줄 안에서만 이동)
+                </p>
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
+                    <SortableLabelList
+                      items={priceRow1.map((id) => ({
+                        id,
+                        label: PRICE_ROW1_CARDS.find((c) => c.id === id)?.label ?? id,
+                      }))}
+                      onReorder={(activeId, overId) => handleReorderPriceCards(1, activeId, overId)}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
+                    <SortableLabelList
+                      items={priceRow2.map((id) => ({
+                        id,
+                        label: PRICE_ROW2_CARDS.find((c) => c.id === id)?.label ?? id,
+                      }))}
+                      onReorder={(activeId, overId) => handleReorderPriceCards(2, activeId, overId)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 가격 카드 텍스트 편집 — 클릭하면 편집, 상단 "변경사항 저장"으로 반영 */}
+              <div className="border-t border-black/5 pt-6">
+                <h3 className="text-sm font-bold text-[var(--accent)] mb-1">가격 섹션 카드 내용</h3>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  각 항목을 클릭하면 편집할 수 있습니다. 카드 구조는 그대로 유지되고 문구만 바뀝니다.
+                  줄바꿈은 Enter로 넣으며, 수정 후 상단의 <span className="font-semibold">변경사항 저장</span> 버튼을 눌러야 반영됩니다.
+                </p>
+
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {PRICE_ROW1_TEXT.map((group) => (
+                        <PriceTextCard
+                          key={group.cardId}
+                          group={group}
+                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
+                          onChange={handleTextChange}
+                          editingKey={editingPriceKey}
+                          setEditingKey={setEditingPriceKey}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {PRICE_ROW2_TEXT.map((group) => (
+                        <PriceTextCard
+                          key={group.cardId}
+                          group={group}
+                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
+                          onChange={handleTextChange}
+                          editingKey={editingPriceKey}
+                          setEditingKey={setEditingPriceKey}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </form>
           )}
 
@@ -776,26 +1462,97 @@ export default function AdminDashboard() {
               {/* 목록 */}
               <div>
                 <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">후기 목록 ({reviews.length})</h3>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {reviews.map((rev) => (
-                    <div key={rev.id} className="flex flex-col justify-between border border-black/5 rounded-2xl p-5 bg-white shadow-sm">
-                      <div>
-                        <p className="text-xs text-[var(--muted)] mb-2 font-bold">{rev.author}</p>
-                        <p className="text-xs leading-relaxed text-[var(--ink-soft)] whitespace-pre-wrap">{rev.content}</p>
-                      </div>
-                      <div className="mt-4 border-t border-black/5 pt-3 flex justify-end">
-                        <button
-                          onClick={() => handleDeleteReview(rev.id)}
-                          className="text-xs text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {reviews.length === 0 && (
-                    <p className="col-span-full text-xs text-[var(--muted)] py-8 text-center">등록된 후기가 없습니다.</p>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장되고 실제 페이지에 반영됩니다.
+                  </p>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
                   )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
+                </div>
+                <SortableReviewList
+                  reviews={reviews}
+                  onReorder={handleReorderReviews}
+                  onDelete={handleDeleteReview}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3-1: PROMISE CARDS */}
+          {activeTab === "promise" && (
+            <div className="space-y-8">
+              {/* 추가 폼 */}
+              <div>
+                <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--accent)]">새 약속 카드 추가</h3>
+                <form onSubmit={handleAddPromise} className="space-y-4 bg-[var(--paper)] p-5 rounded-2xl">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1.5">제목</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="투명하고 합리적인 가치"
+                      value={newPromise.title}
+                      onChange={(e) => setNewPromise((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full max-w-md rounded-xl border border-black/10 bg-white px-3 py-2.5 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1.5">내용</label>
+                    <textarea
+                      required
+                      rows={2}
+                      placeholder="누구나 부담 없이 다가올 수 있는 정직한 가성비를 제안합니다."
+                      value={newPromise.content}
+                      onChange={(e) => setNewPromise((prev) => ({ ...prev, content: e.target.value }))}
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-[var(--ink)] text-white px-6 py-2.5 text-xs font-semibold hover:bg-[var(--accent)] transition-all cursor-pointer"
+                  >
+                    추가하기
+                  </button>
+                </form>
+              </div>
+
+              {/* 목록 */}
+              <div>
+                <h3 className="text-sm font-bold border-b border-black/5 pb-2 mb-4 text-[var(--ink)]">약속 카드 목록 ({promises.length})</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장됩니다. 제목·내용을 고친 뒤에는 카드의 <span className="font-semibold">저장</span> 버튼을 눌러야 반영됩니다.
+                  </p>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
+                  )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
+                </div>
+                <div className="max-w-2xl">
+                  <SortablePromiseList
+                    promises={promises}
+                    onChange={handlePromiseChange}
+                    onSave={handleSavePromise}
+                    onDelete={handleDeletePromise}
+                    onReorder={handleReorderPromises}
+                    savingId={savingPromiseId}
+                  />
                 </div>
               </div>
             </div>

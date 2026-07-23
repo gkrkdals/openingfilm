@@ -46,6 +46,15 @@ model Reservation {
   createdAt       DateTime @default(now())
 }
 
+// 5-1. 프로미스 카드 (About 섹션의 "우리의 약속" 카드)
+model PromiseCard {
+  id          String   @id @default(uuid())
+  title       String
+  content     String
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
 // 5. 어드민 유저
 model AdminUser {
   id        String   @id @default(uuid())

@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 import FloatingNav from "./components/FloatingNav";
-import PromiseCards from "./components/PromiseCards";
+import PromiseCards, { type PromiseCardItem } from "./components/PromiseCards";
 import PriceSection from "./components/PriceSection";
 import PortfolioSection from "./components/PortfolioSection";
 import ReservationForm from "./components/ReservationForm";
@@ -31,6 +31,7 @@ export default async function Home() {
   let content = { ...DEFAULT_CONTENT };
   let portfolios: { id: string; type: string; title: string; youtube_id: string }[] = [];
   let reviews: { id: string; author: string; content: string }[] = [];
+  let promises: PromiseCardItem[] = [];
 
   try {
     // 1. Fetch site content
@@ -60,6 +61,18 @@ export default async function Home() {
       reviews = revData.map((item: any) => ({
         id: item.id,
         author: item.author,
+        content: item.content,
+      }));
+    }
+
+    // 4. Fetch promise cards
+    const promiseData = await prisma.promiseCard.findMany({
+      orderBy: { orderIndex: "asc" },
+    });
+    if (promiseData) {
+      promises = promiseData.map((item: any) => ({
+        id: item.id,
+        title: item.title,
         content: item.content,
       }));
     }
@@ -183,7 +196,7 @@ export default async function Home() {
                 <p className="whitespace-pre-wrap">{content.about_text_3}</p>
                 <div className="moving-line moving-line-left moving-line-beige" aria-hidden="true" />
               </div>
-              <PromiseCards />
+              <PromiseCards promises={promises} />
             </div>
             <div className="text-center font-semibold tracking-wide leading-relaxed text-2xl text-[var(--muted)]">
               {content.about_bottom}
@@ -191,7 +204,13 @@ export default async function Home() {
           </div>
         </section>
 
-        <PriceSection priceTitle={content.price_title} priceVal={content.price_val} />
+        <PriceSection
+          priceTitle={content.price_title}
+          priceVal={content.price_val}
+          row1Order={content.price_row1_order}
+          row2Order={content.price_row2_order}
+          content={content}
+        />
 
         <PortfolioSection videos={portfolios} />
 

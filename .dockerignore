@@ -1,0 +1,33 @@
+# 의존성 / 빌드 산출물 (이미지에서 재생성됨)
+node_modules
+.next
+out
+tsconfig.tsbuildinfo
+
+# 버전관리 / CI
+.git
+.github
+.gitignore
+
+# 로컬 DB (런타임에 볼륨 위에서 생성 — 개발용 dev.db가 이미지에 구워지는 것 방지)
+prisma/data
+
+# 환경변수 / 시크릿 (런타임 .env / env_file로 주입)
+.env
+.env.*
+!.env.local.example
+
+# 로컬 도구 / 에디터
+.claude
+.venv
+.vscode
+.idea
+
+# 배포 설정 (빌드 컨텍스트에 불필요)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# 문서 / 기타
+README.md
+*.log

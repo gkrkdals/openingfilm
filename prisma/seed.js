@@ -48,6 +48,24 @@ const DEFAULT_REVIEWS = [
   },
 ];
 
+const DEFAULT_PROMISES = [
+  {
+    title: "투명하고 합리적인 가치",
+    content: "누구나 부담 없이 다가올 수 있는 정직한 가성비를 제안합니다.",
+    orderIndex: 0,
+  },
+  {
+    title: "친구 같은 친근한 소통",
+    content: "예식 당일, 불편한 촬영자가 아닌 두 분을 응원하는 단짝으로 함께합니다.",
+    orderIndex: 1,
+  },
+  {
+    title: "자연스러운 우리다운 기록",
+    content: "억지 연출 없이 그날의 공기와 설렘이 그대로 남는 순간을 담아냅니다.",
+    orderIndex: 2,
+  },
+];
+
 async function main() {
   console.log("Seeding database...");
 
@@ -85,6 +103,19 @@ async function main() {
     console.log("Reviews seeded.");
   } else {
     console.log("Reviews table is not empty, skipping seed.");
+  }
+
+  // 4. Promise Cards Seeding (Only if empty)
+  const promiseCount = await prisma.promiseCard.count();
+  if (promiseCount === 0) {
+    for (const item of DEFAULT_PROMISES) {
+      await prisma.promiseCard.create({
+        data: item,
+      });
+    }
+    console.log("Promise cards seeded.");
+  } else {
+    console.log("Promise cards table is not empty, skipping seed.");
   }
 
   console.log("Seeding finished successfully!");
