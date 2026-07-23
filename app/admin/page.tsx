@@ -547,7 +547,7 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<
-    "text" | "portfolio" | "review" | "promise" | "reservation"
+    "text" | "portfolio" | "review" | "promise" | "price" | "reservation"
   >("text");
   const [loading, setLoading] = useState(true);
 
@@ -1053,7 +1053,8 @@ export default function AdminDashboard() {
             { id: "text", label: "페이지 텍스트" },
             { id: "portfolio", label: "포트폴리오 관리" },
             { id: "review", label: "고객 후기" },
-            { id: "promise", label: "약속 카드" },
+            { id: "promise", label: "ABOUT 섹션" },
+            { id: "price", label: "PRICE/GUIDE 섹션" },
             { id: "reservation", label: "예약 내역 조회" },
           ].map((tab) => (
             <button
@@ -1238,91 +1239,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* 가격 카드 순서 변경 — 내용은 코드에 고정, 순서만 드래그로 변경(즉시 저장) */}
-              <div className="border-t border-black/5 pt-6">
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-bold text-[var(--accent)]">가격 섹션 카드 순서</h3>
-                  {reorderStatus === "saving" && (
-                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
-                  )}
-                  {reorderStatus === "success" && (
-                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
-                  )}
-                  {reorderStatus === "error" && (
-                    <span className="text-xs font-semibold text-rose-600">
-                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-[var(--muted)] mb-4">
-                  ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장되고 실제 페이지에 반영됩니다. 카드 내용은 변경되지 않고 순서만 바뀝니다. (윗줄/아랫줄은 각 줄 안에서만 이동)
-                </p>
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
-                    <SortableLabelList
-                      items={priceRow1.map((id) => ({
-                        id,
-                        label: PRICE_ROW1_CARDS.find((c) => c.id === id)?.label ?? id,
-                      }))}
-                      onReorder={(activeId, overId) => handleReorderPriceCards(1, activeId, overId)}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
-                    <SortableLabelList
-                      items={priceRow2.map((id) => ({
-                        id,
-                        label: PRICE_ROW2_CARDS.find((c) => c.id === id)?.label ?? id,
-                      }))}
-                      onReorder={(activeId, overId) => handleReorderPriceCards(2, activeId, overId)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 가격 카드 텍스트 편집 — 클릭하면 편집, 상단 "변경사항 저장"으로 반영 */}
-              <div className="border-t border-black/5 pt-6">
-                <h3 className="text-sm font-bold text-[var(--accent)] mb-1">가격 섹션 카드 내용</h3>
-                <p className="text-xs text-[var(--muted)] mb-4">
-                  각 항목을 클릭하면 편집할 수 있습니다. 카드 구조는 그대로 유지되고 문구만 바뀝니다.
-                  줄바꿈은 Enter로 넣으며, 수정 후 상단의 <span className="font-semibold">변경사항 저장</span> 버튼을 눌러야 반영됩니다.
-                </p>
-
-                <div className="space-y-6">
-                  <div>
-                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      {PRICE_ROW1_TEXT.map((group) => (
-                        <PriceTextCard
-                          key={group.cardId}
-                          group={group}
-                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
-                          onChange={handleTextChange}
-                          editingKey={editingPriceKey}
-                          setEditingKey={setEditingPriceKey}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {PRICE_ROW2_TEXT.map((group) => (
-                        <PriceTextCard
-                          key={group.cardId}
-                          group={group}
-                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
-                          onChange={handleTextChange}
-                          editingKey={editingPriceKey}
-                          setEditingKey={setEditingPriceKey}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </form>
           )}
 
@@ -1556,6 +1472,124 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* TAB 3-2: PRICE / GUIDE SECTION */}
+          {activeTab === "price" && (
+            <form onSubmit={handleSaveText} className="space-y-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-bold">PRICE / GUIDE 섹션 설정</h2>
+                  <p className="text-xs text-[var(--muted)] mt-1">
+                    가격 안내 카드의 순서와 문구를 관리합니다. 카드 구조는 유지되고 순서·내용만 바뀝니다.
+                  </p>
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingText}
+                  className="rounded-full bg-[var(--ink)] text-white px-6 py-2.5 text-xs font-semibold hover:bg-[var(--accent)] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingText ? "저장 중..." : "변경사항 저장"}
+                </button>
+              </div>
+
+              {saveStatus === "success" && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 text-sm">
+                  변경 사항이 성공적으로 저장되었습니다.
+                </div>
+              )}
+              {saveStatus === "error" && (
+                <div className="rounded-xl bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 text-sm">
+                  오류가 발생하여 저장에 실패했습니다.
+                </div>
+              )}
+
+              {/* 가격 카드 순서 변경 — 순서만 드래그로 변경(즉시 저장) */}
+              <div className="border-t border-black/5 pt-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-bold text-[var(--accent)]">가격 섹션 카드 순서</h3>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">순서 저장 중...</span>
+                  )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">순서가 저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      순서 저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  ⠿ 핸들을 드래그해 순서를 바꾸면 즉시 저장되고 실제 페이지에 반영됩니다. 카드 내용은 변경되지 않고 순서만 바뀝니다. (윗줄/아랫줄은 각 줄 안에서만 이동)
+                </p>
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
+                    <SortableLabelList
+                      items={priceRow1.map((id) => ({
+                        id,
+                        label: PRICE_ROW1_CARDS.find((c) => c.id === id)?.label ?? id,
+                      }))}
+                      onReorder={(activeId, overId) => handleReorderPriceCards(1, activeId, overId)}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
+                    <SortableLabelList
+                      items={priceRow2.map((id) => ({
+                        id,
+                        label: PRICE_ROW2_CARDS.find((c) => c.id === id)?.label ?? id,
+                      }))}
+                      onReorder={(activeId, overId) => handleReorderPriceCards(2, activeId, overId)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 가격 카드 텍스트 편집 — 클릭하면 편집, 상단 "변경사항 저장"으로 반영 */}
+              <div className="border-t border-black/5 pt-6">
+                <h3 className="text-sm font-bold text-[var(--accent)] mb-1">가격 섹션 카드 내용</h3>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  각 항목을 클릭하면 편집할 수 있습니다. 카드 구조는 그대로 유지되고 문구만 바뀝니다.
+                  줄바꿈은 Enter로 넣으며, 수정 후 상단의 <span className="font-semibold">변경사항 저장</span> 버튼을 눌러야 반영됩니다.
+                </p>
+
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">윗줄 (3단 구성)</p>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {PRICE_ROW1_TEXT.map((group) => (
+                        <PriceTextCard
+                          key={group.cardId}
+                          group={group}
+                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
+                          onChange={handleTextChange}
+                          editingKey={editingPriceKey}
+                          setEditingKey={setEditingPriceKey}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">아랫줄 (2단 구성)</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {PRICE_ROW2_TEXT.map((group) => (
+                        <PriceTextCard
+                          key={group.cardId}
+                          group={group}
+                          getValue={(key) => siteContent[key] ?? PRICE_TEXT_DEFAULTS[key] ?? ""}
+                          onChange={handleTextChange}
+                          editingKey={editingPriceKey}
+                          setEditingKey={setEditingPriceKey}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </form>
           )}
 
           {/* TAB 4: RESERVATION REQUESTS */}
