@@ -80,6 +80,8 @@ jobs:
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
             echo "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" >> .env
             echo "ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}" >> .env
+            echo "SHEETS_WEBHOOK_URL=${{ secrets.SHEETS_WEBHOOK_URL }}" >> .env
+            echo "SHEETS_WEBHOOK_TOKEN=${{ secrets.SHEETS_WEBHOOK_TOKEN }}" >> .env
             
             # GITHUB_REPOSITORY_OWNER 환경 변수 설정하여 이미지 다운로드 경로 맞춤
             export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}

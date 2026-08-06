@@ -42,6 +42,7 @@ model Reservation {
   weddingTime     String
   weddingLocation String
   contact         String
+  email           String?
   status          String   @default("pending") // 'pending' | 'approved' | 'cancelled'
   createdAt       DateTime @default(now())
 }

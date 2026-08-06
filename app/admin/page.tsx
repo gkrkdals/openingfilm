@@ -70,6 +70,7 @@ interface ReservationItem {
   weddingTime: string;
   weddingLocation: string;
   contact: string;
+  email: string | null;
   status: string;
   createdAt: string;
 }
@@ -1623,7 +1624,10 @@ export default function AdminDashboard() {
                           <p className="text-[var(--muted)] mt-0.5">{res.weddingLocation}</p>
                         </td>
                         <td className="px-4 py-4 text-[var(--ink-soft)] font-medium">
-                          {res.contact}
+                          <p>{res.contact}</p>
+                          {res.email ? (
+                            <p className="text-[var(--muted)] mt-0.5">{res.email}</p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-4 text-[var(--muted)]">
                           {new Date(res.createdAt).toLocaleString("ko-KR")}

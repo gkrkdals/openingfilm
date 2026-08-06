@@ -27,6 +27,7 @@ export default function ReservationForm() {
     const wedding_time = formData.get("예식 시간") as string;
     const wedding_location = formData.get("예식 장소") as string;
     const contact = formData.get("연락처") as string;
+    const email = formData.get("메일 주소") as string;
 
     // Validation
     if (!wedding_date || !wedding_time || !wedding_location || !contact) {
@@ -48,6 +49,7 @@ export default function ReservationForm() {
           wedding_time,
           wedding_location,
           contact,
+          email,
         }),
       });
 
@@ -101,12 +103,20 @@ export default function ReservationForm() {
         className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
         placeholder="예식 장소 (필수)"
       />
-      <input
-        name="연락처"
-        required
-        className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-        placeholder="연락처 (필수)"
-      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <input
+          name="연락처"
+          required
+          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
+          placeholder="연락처 (필수)"
+        />
+        <input
+          name="메일 주소"
+          type="email"
+          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
+          placeholder="메일 주소"
+        />
+      </div>
       <button
         type="submit"
         disabled={formStatus === "sending"}

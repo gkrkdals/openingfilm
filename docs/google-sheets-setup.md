@@ -1,0 +1,194 @@
+# 구글 스프레드시트 예약 연동 세팅 가이드
+
+고객이 사이트에서 예약 신청을 하면 구글 스프레드시트에 자동으로 한 줄씩 추가되도록 하는 설정 절차입니다. 소요 시간은 약 15분이며, **시트를 소유할 클라이언트(운영자)의 구글 계정으로 로그인한 상태**에서 진행합니다.
+
+> **계정을 전달받아 대신 세팅하는 경우**: 본인 개인 계정과 섞이지 않도록 **크롬 시크릿 창(또는 별도 브라우저 프로필)** 에서 클라이언트 계정으로 로그인하고 진행하세요. 시트와 스크립트의 소유자가 클라이언트 계정이어야 나중에 계정 접근 권한을 반납해도 연동이 유지됩니다. 작업이 끝나면 로그아웃하고, 클라이언트에게 비밀번호 변경을 권장하세요.
+
+## 준비물
+
+- 클라이언트 구글 계정 로그인
+- 토큰용 무작위 문자열 1개 — 터미널에서 생성:
+
+```bash
+openssl rand -hex 20
+```
+
+출력된 40자 문자열을 메모해 두세요. 이후 **(A) Apps Script 코드**와 **(B) 서버 환경변수** 두 곳에 똑같이 들어갑니다.
+
+---
+
+## 1단계. 스프레드시트 만들기
+
+1. 시크릿 창에서 [sheets.google.com](https://sheets.google.com) 접속 → 클라이언트 계정으로 로그인.
+2. 좌측 상단 **+ (빈 스프레드시트)** 클릭.
+3. 좌측 상단 "제목 없는 스프레드시트"를 클릭해 이름 변경: 예) `오프닝필름 예약 목록`.
+4. 1행에 아래 헤더를 A1부터 순서대로 입력합니다. **순서가 코드와 일치해야 하므로 바꾸지 마세요.**
+
+   | A1 | B1 | C1 | D1 | E1 | F1 | G1 | H1 |
+   |----|----|----|----|----|----|----|----|
+   | 접수일시 | 신랑 성함 | 신부 성함 | 예식 날짜 | 예식 시간 | 예식 장소 | 연락처 | 메일 주소 |
+
+5. (선택) 1행을 선택해 굵게 처리, **보기 → 고정 → 행 1개**로 헤더 고정.
+
+## 2단계. Apps Script 코드 넣기
+
+1. 시트 상단 메뉴 **확장 프로그램 → Apps Script** 클릭 → 새 탭에 스크립트 편집기가 열립니다.
+2. 좌측 상단 "제목 없는 프로젝트"를 클릭해 이름 변경: 예) `예약 연동`.
+3. 편집기 가운데 `Code.gs` 파일에 있는 기본 코드(`function myFunction() {...}`)를 **전부 삭제**합니다.
+4. 아래 코드를 그대로 붙여넣습니다.
+
+```javascript
+// ===== 설정 =====
+// 준비물에서 만든 토큰 문자열로 바꾸세요. 서버의 SHEETS_WEBHOOK_TOKEN 값과 반드시 같아야 합니다.
+var TOKEN = "여기를-토큰-문자열로-변경";
+
+// 사이트 서버가 예약 데이터를 POST로 보내면 시트에 한 줄씩 추가합니다.
+function doPost(e) {
+  var output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+
+  try {
+    var data = JSON.parse(e.postData.contents);
+
+    // 토큰이 일치하지 않는 요청은 무시 (URL이 유출되어도 아무나 기록하지 못하도록)
+    if (!TOKEN || data.token !== TOKEN) {
+      output.setContent(JSON.stringify({ error: "unauthorized" }));
+      return output;
+    }
+
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+
+    // 단건({...}) 또는 일괄 이관({ reservations: [...] }) 모두 처리
+    var items = Array.isArray(data.reservations) ? data.reservations : [data];
+
+    items.forEach(function (item) {
+      sheet.appendRow([
+        toKst(item.created_at),
+        item.groom_name || "",
+        item.bride_name || "",
+        item.wedding_date || "",
+        item.wedding_time || "",
+        item.wedding_location || "",
+        item.contact || "",
+        item.email || "",
+      ]);
+    });
+
+    output.setContent(JSON.stringify({ success: true, count: items.length }));
+  } catch (err) {
+    output.setContent(JSON.stringify({ error: String(err) }));
+  }
+
+  return output;
+}
+
+// ISO 시각 문자열을 한국 시간 "2026-08-05 14:30" 형태로 변환
+function toKst(iso) {
+  if (!iso) return "";
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return Utilities.formatDate(d, "Asia/Seoul", "yyyy-MM-dd HH:mm");
+}
+```
+
+5. 코드 1번째 줄의 `TOKEN` 값을 준비물에서 만든 토큰 문자열로 교체합니다. 따옴표는 남겨둡니다.
+
+   ```javascript
+   var TOKEN = "a1b2c3d4...40자";
+   ```
+
+6. 상단 **저장 아이콘**(💾) 클릭 (또는 Cmd+S).
+
+## 3단계. 웹 앱으로 배포
+
+1. 편집기 우측 상단 파란색 **배포 → 새 배포** 클릭.
+2. 좌측 톱니바퀴(⚙ 유형 선택) → **웹 앱** 선택.
+3. 설정값:
+   - **설명**: 자유 입력 (예: `예약 연동 v1`)
+   - **다음 사용자 인증 정보로 실행**: **나(클라이언트 계정 이메일)** ← 기본값
+   - **액세스 권한이 있는 사용자**: **모든 사용자** ← 기본값 "나만"에서 **반드시 변경**
+4. **배포** 클릭.
+5. **권한 승인 절차** (최초 1회만 나옵니다):
+   1. "액세스 승인" 버튼 클릭 → 구글 계정 선택 창에서 클라이언트 계정 선택.
+   2. **"Google에서 확인하지 않은 앱"** 경고 화면이 나옵니다 → 좌측 하단 작은 글씨 **"고급"** 클릭 → 맨 아래 **"예약 연동(안전하지 않음)으로 이동"** 클릭.
+      - 본인이 방금 작성한 스크립트라서 뜨는 표준 경고입니다. 안전합니다.
+   3. 권한 목록(스프레드시트 보기/관리) 확인 → **허용** 클릭.
+6. 배포 완료 화면에서 **웹 앱 URL**을 복사합니다. 형태:
+
+   ```
+   https://script.google.com/macros/s/AKfycb.../exec
+   ```
+
+   끝이 `/exec`인지 확인하세요. (`/dev`로 끝나는 URL은 편집자 전용이라 쓰면 안 됩니다.)
+
+> **"액세스 권한: 모든 사용자"의 의미**: 이 URL로 데이터를 *보낼* 수 있다는 뜻일 뿐, 시트 내용이 공개되는 게 아닙니다. 시트 열람은 평소처럼 시트의 공유 설정을 따르고, 토큰이 틀린 요청은 코드에서 거부합니다.
+
+## 4단계. 웹훅 동작 확인 (서버 연결 전에 미리 테스트)
+
+터미널에서 아래 명령을 실행합니다. `<웹앱URL>`과 `<토큰>`을 실제 값으로 바꾸세요.
+
+```bash
+curl -sL -X POST "<웹앱URL>" -H "Content-Type: application/json" -d '{"token":"<토큰>","groom_name":"테스트","bride_name":"테스트","wedding_date":"2026-12-25","wedding_time":"오후 2시","wedding_location":"세팅 테스트","contact":"010-0000-0000","email":"test@example.com","created_at":"2026-08-05T05:00:00.000Z"}'
+```
+
+- 응답이 `{"success":true,"count":1}`이고 시트에 행이 추가되면 성공입니다. 확인 후 테스트 행은 시트에서 삭제하세요.
+- `{"error":"unauthorized"}`가 나오면 명령의 토큰과 코드의 `TOKEN`이 다른 것입니다.
+- `-L` 옵션은 필수입니다 (Apps Script는 302 리다이렉트로 응답).
+
+## 5단계. 서버에 환경변수 설정
+
+두 값을 짝으로 설정합니다.
+
+```
+SHEETS_WEBHOOK_URL="<웹앱URL>"
+SHEETS_WEBHOOK_TOKEN="<토큰>"
+```
+
+**로컬 개발**: 프로젝트 루트 `.env`의 해당 항목에 값을 채웁니다.
+
+**프로덕션**: 서버의 `.env`는 배포할 때마다 [deploy.yml](../.github/workflows/deploy.yml)이 GitHub Secrets 값으로 재생성하므로, 반드시 GitHub에 등록해야 합니다.
+
+1. GitHub 저장소 → **Settings → Secrets and variables → Actions** → **New repository secret**
+2. Name: `SHEETS_WEBHOOK_URL`, Secret: 웹앱 URL → **Add secret**
+3. 같은 방법으로 `SHEETS_WEBHOOK_TOKEN` 추가
+4. main에 푸시(또는 Actions에서 deploy 워크플로 재실행)하여 배포 → 배포 후 실제 사이트에서 예약 테스트 1건을 넣어 시트에 도착하는지 확인
+
+## 6단계. 기존 예약 옮기기 (선택, 최초 1회)
+
+연동 이전에 접수된 예약을 시트로 옮기려면, 환경변수가 설정된 곳(프로덕션 컨테이너 또는 프로덕션 DB 접근 가능한 환경)에서 한 번만 실행합니다.
+
+```bash
+node scripts/export-reservations.js
+```
+
+접수일시 오름차순으로 시트에 추가됩니다. **여러 번 실행하면 같은 예약이 중복으로 쌓이니 한 번만 실행하세요.**
+
+## 7단계. 새 예약 이메일 알림 (선택)
+
+클라이언트가 원하면 시트에 행이 추가될 때 이메일을 받을 수 있습니다. **알림은 시트 소유자 본인 계정으로만 설정 가능**하므로 이 단계는 클라이언트가 직접 하거나 계정 접근 중에 대신 설정합니다.
+
+1. 시트 메뉴 **도구 → 알림 규칙** (영문: Tools → Notification rules)
+2. "변경사항이 있을 경우" 선택 + "수시로 이메일 받기" 선택 → **저장**
+
+---
+
+## 문제 해결
+
+| 증상 | 원인/해결 |
+|---|---|
+| 코드를 고쳤는데 반영이 안 됨 | Apps Script는 재배포해야 반영됩니다: **배포 → 배포 관리 → 연필 아이콘 → 버전: "새 버전" → 배포**. URL은 그대로 유지됩니다. **"새 배포"로 하면 URL이 바뀌니 주의.** |
+| 시트에 행이 안 쌓임 | ① 서버 환경변수 두 개가 비어 있지 않은지 ② 토큰이 Apps Script의 `TOKEN`과 정확히 같은지 ③ URL이 `/exec`로 끝나는지 확인. 4단계 curl 테스트로 서버 문제인지 스크립트 문제인지 분리하세요. |
+| curl 응답이 HTML 에러 페이지 | 배포 설정의 "액세스 권한"이 "모든 사용자"가 아니거나, `/dev` URL을 쓴 경우입니다. |
+| 예약 접수 자체가 걱정될 때 | 시트 전송은 부가 동작입니다. 웹훅이 죽어도 예약은 항상 DB에 정상 저장되고, 어드민에서 확인 가능합니다. |
+
+## 완료 체크리스트
+
+- [ ] 시트 생성 + 헤더 7개 입력 (클라이언트 계정 소유)
+- [ ] Apps Script 붙여넣기 + `TOKEN` 교체 + 저장
+- [ ] 웹 앱 배포 (실행: 나 / 액세스: 모든 사용자) + `/exec` URL 확보
+- [ ] curl 테스트 성공 + 테스트 행 삭제
+- [ ] GitHub Secrets 2개 등록 + 재배포
+- [ ] 실서비스에서 예약 1건 테스트 → 시트 도착 확인 (테스트 예약은 어드민에서 삭제)
+- [ ] (선택) 기존 예약 이관 스크립트 1회 실행
+- [ ] (선택) 알림 규칙 설정
+- [ ] 시크릿 창 로그아웃, 클라이언트에게 비밀번호 변경 안내
