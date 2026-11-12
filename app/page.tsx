@@ -6,6 +6,7 @@ import PriceSection from "./components/PriceSection";
 import PortfolioSection from "./components/PortfolioSection";
 import ReservationForm from "./components/ReservationForm";
 import ReviewSection from "./components/ReviewSection";
+import { buildReservationFormFields, reservationText } from "./components/reservationFields";
 import prisma from "@/utils/db";
 
 // Force dynamic fetch so edits are shown instantly
@@ -222,17 +223,20 @@ export default async function Home() {
         >
           <div className="grid gap-12 px-8 py-16 md:grid-cols-[1.05fr_0.95fr] md:px-14">
             <div className="flex flex-col gap-6">
-              <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">Reservation</p>
-              <h3 className="text-2xl font-semibold leading-9 md:text-3xl">
-                오프닝필름 예약 신청
-                <br />
-                가장 아름다운 시작을 함께 준비합니다.
+              <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
+                {reservationText(content, "reservation_label")}
+              </p>
+              <h3 className="text-2xl font-semibold leading-9 md:text-3xl whitespace-pre-line">
+                {reservationText(content, "reservation_title")}
               </h3>
-              <p className="text-sm text-[var(--muted)]">
-                문의: 카카오톡 "오프닝필름" / DM
+              <p className="text-sm text-[var(--muted)] whitespace-pre-line">
+                {reservationText(content, "reservation_contact")}
               </p>
             </div>
-            <ReservationForm />
+            <ReservationForm
+              fields={buildReservationFormFields(content)}
+              submitLabel={reservationText(content, "reservation_submit")}
+            />
           </div>
         </section>
       </main>

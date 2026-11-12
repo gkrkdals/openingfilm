@@ -1,8 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import type { ReservationFormField } from "./reservationFields";
 
-export default function ReservationForm() {
+export default function ReservationForm({
+  fields,
+  submitLabel,
+}: {
+  fields: ReservationFormField[];
+  submitLabel: string;
+}) {
   const [formStatus, setFormStatus] = useState<
     "idle" | "sending" | "success" | "error"
   >("idle");
@@ -72,57 +79,26 @@ export default function ReservationForm() {
   return (
     <form className="grid gap-4" onSubmit={handleFormSubmit}>
       <div className="grid gap-4 md:grid-cols-2">
-        <input
-          name="신랑 성함"
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="신랑 성함"
-        />
-        <input
-          name="신부 성함"
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="신부 성함"
-        />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <input
-          name="예식 날짜"
-          required
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="예식 날짜 (필수)"
-        />
-        <input
-          name="예식 시간"
-          required
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="예식 시간 (필수)"
-        />
-      </div>
-      <input
-        name="예식 장소"
-        required
-        className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-        placeholder="예식 장소 (필수)"
-      />
-      <div className="grid gap-4 md:grid-cols-2">
-        <input
-          name="연락처"
-          required
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="연락처 (필수)"
-        />
-        <input
-          name="메일 주소"
-          type="email"
-          className="rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-          placeholder="메일 주소"
-        />
+        {fields.map((field) => (
+          <input
+            key={field.id}
+            name={field.name}
+            type={field.type}
+            required={field.required}
+            aria-label={field.name}
+            className={`rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none ${
+              field.full ? "md:col-span-2" : ""
+            }`}
+            placeholder={field.placeholder}
+          />
+        ))}
       </div>
       <button
         type="submit"
         disabled={formStatus === "sending"}
         className="mt-2 rounded-full border border-black/30 px-6 py-3 text-sm font-semibold transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
       >
-        {formStatus === "sending" ? "전송 중..." : "예약 신청하기"}
+        {formStatus === "sending" ? "전송 중..." : submitLabel}
       </button>
       {formMessage ? (
         <p

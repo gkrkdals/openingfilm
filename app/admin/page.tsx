@@ -33,6 +33,19 @@ import {
   type PriceTextField,
   type PriceTextGroup,
 } from "../components/priceCards";
+import {
+  RESERVATION_FIELDS,
+  RESERVATION_ORDER_KEY,
+  RESERVATION_WIDE_KEY,
+  RESERVATION_INTRO_TEXT,
+  RESERVATION_BUTTON_TEXT,
+  RESERVATION_PLACEHOLDER_TEXT,
+  RESERVATION_TEXT_DEFAULTS,
+  layoutReservationFields,
+  reservationFieldOrder,
+  reservationPlaceholderKey,
+  reservationWideIds,
+} from "../components/reservationFields";
 
 // Define TypeScript types corresponding to Prisma schema
 interface SiteContent {
@@ -392,7 +405,15 @@ function SortablePromiseList({
 /**
  * 라벨만 있는 정렬 카드 — 가격 섹션 카드 순서 변경처럼 "내용은 코드에 고정, 순서만 변경"할 때 쓴다.
  */
-function SortableLabelCard({ id, label }: { id: string; label: string }) {
+function SortableLabelCard({
+  id,
+  label,
+  extra,
+}: {
+  id: string;
+  label: string;
+  extra?: React.ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
@@ -414,6 +435,7 @@ function SortableLabelCard({ id, label }: { id: string; label: string }) {
         ⠿
       </button>
       <span className="text-sm font-semibold text-[var(--ink)]">{label}</span>
+      {extra ? <div className="ml-auto flex items-center gap-2">{extra}</div> : null}
     </div>
   );
 }
@@ -425,7 +447,7 @@ function SortableLabelList({
   items,
   onReorder,
 }: {
-  items: { id: string; label: string }[];
+  items: { id: string; label: string; extra?: React.ReactNode }[];
   onReorder: (activeId: string, overId: string) => void;
 }) {
   const sensors = useSensors(
@@ -444,7 +466,7 @@ function SortableLabelList({
       <SortableContext items={items.map((it) => it.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-3">
           {items.map((it) => (
-            <SortableLabelCard key={it.id} id={it.id} label={it.label} />
+            <SortableLabelCard key={it.id} id={it.id} label={it.label} extra={it.extra} />
           ))}
         </div>
       </SortableContext>
@@ -548,7 +570,7 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<
-    "text" | "portfolio" | "review" | "promise" | "price" | "reservation"
+    "text" | "portfolio" | "review" | "promise" | "price" | "reservationForm" | "reservation"
   >("text");
   const [loading, setLoading] = useState(true);
 
@@ -574,6 +596,10 @@ export default function AdminDashboard() {
   const [priceRow1, setPriceRow1] = useState<string[]>(PRICE_ROW1_CARDS.map((c) => c.id));
   const [priceRow2, setPriceRow2] = useState<string[]>(PRICE_ROW2_CARDS.map((c) => c.id));
 
+  // 예약 폼 입력 칸 순서(id 배열)와 한 줄 전체를 쓰는 칸 id 집합
+  const [resFieldOrder, setResFieldOrder] = useState<string[]>(reservationFieldOrder());
+  const [resWide, setResWide] = useState<Set<string>>(reservationWideIds());
+
   // 가격 카드 텍스트 편집 — 현재 클릭해서 편집 중인 필드 key(하나만)
   const [editingPriceKey, setEditingPriceKey] = useState<string | null>(null);
 
@@ -591,6 +617,8 @@ export default function AdminDashboard() {
         setSiteContent(contentMap);
         setPriceRow1(applyPriceOrder(PRICE_ROW1_CARDS, contentMap[PRICE_ROW1_ORDER_KEY]));
         setPriceRow2(applyPriceOrder(PRICE_ROW2_CARDS, contentMap[PRICE_ROW2_ORDER_KEY]));
+        setResFieldOrder(reservationFieldOrder(contentMap[RESERVATION_ORDER_KEY]));
+        setResWide(reservationWideIds(contentMap[RESERVATION_WIDE_KEY]));
       }
 
       // 2. Fetch portfolios
@@ -972,6 +1000,59 @@ export default function AdminDashboard() {
     }
   };
 
+  // 예약 폼 설정 값 하나를 즉시 저장. 낙관적 갱신은 호출 측에서 하고, 실패하면 rollback을 부른다.
+  const saveReservationSetting = async (key: string, value: string, prevValue: string | undefined, rollback: () => void) => {
+    setSiteContent((c) => ({ ...c, [key]: value }));
+    setReorderStatus("saving");
+
+    try {
+      const res = await fetch("/api/admin/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ key, value }]),
+      });
+
+      if (!res.ok) throw new Error("Failed to save reservation form setting");
+      setReorderStatus("success");
+    } catch (err) {
+      console.error(err);
+      rollback();
+      setSiteContent((c) => {
+        const next = { ...c };
+        if (prevValue === undefined) delete next[key];
+        else next[key] = prevValue;
+        return next;
+      });
+      setReorderStatus("error");
+    } finally {
+      setTimeout(() => setReorderStatus("idle"), 3000);
+    }
+  };
+
+  const handleReorderReservationFields = (activeId: string, overId: string) => {
+    const oldIndex = resFieldOrder.indexOf(activeId);
+    const newIndex = resFieldOrder.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const prev = resFieldOrder;
+    const next = arrayMove(resFieldOrder, oldIndex, newIndex);
+    setResFieldOrder(next);
+    saveReservationSetting(RESERVATION_ORDER_KEY, next.join(","), siteContent[RESERVATION_ORDER_KEY], () =>
+      setResFieldOrder(prev)
+    );
+  };
+
+  const handleToggleReservationWide = (id: string) => {
+    const prev = resWide;
+    const next = new Set(resWide);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setResWide(next);
+    saveReservationSetting(RESERVATION_WIDE_KEY, [...next].join(","), siteContent[RESERVATION_WIDE_KEY], () =>
+      setResWide(prev)
+    );
+  };
+
   // 4. Reservation actions
   const handleUpdateResStatus = async (id: string, currentStatus: string) => {
     const nextStatusMap: Record<string, string> = {
@@ -1056,6 +1137,7 @@ export default function AdminDashboard() {
             { id: "review", label: "고객 후기" },
             { id: "promise", label: "ABOUT 섹션" },
             { id: "price", label: "PRICE/GUIDE 섹션" },
+            { id: "reservationForm", label: "예약 폼 설정" },
             { id: "reservation", label: "예약 내역 조회" },
           ].map((tab) => (
             <button
@@ -1588,6 +1670,133 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* TAB: RESERVATION FORM SETTINGS */}
+          {activeTab === "reservationForm" && (
+            <form onSubmit={handleSaveText} className="space-y-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-bold">예약 폼 설정</h2>
+                  <p className="text-xs text-[var(--muted)] mt-1">
+                    예약 신청 섹션의 입력 칸 순서·너비와 안내 문구를 관리합니다.
+                  </p>
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingText}
+                  className="rounded-full bg-[var(--ink)] text-white px-6 py-2.5 text-xs font-semibold hover:bg-[var(--accent)] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingText ? "저장 중..." : "변경사항 저장"}
+                </button>
+              </div>
+
+              {saveStatus === "success" && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 text-sm">
+                  변경 사항이 성공적으로 저장되었습니다.
+                </div>
+              )}
+              {saveStatus === "error" && (
+                <div className="rounded-xl bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 text-sm">
+                  오류가 발생하여 저장에 실패했습니다.
+                </div>
+              )}
+
+              {/* 입력 칸 배치 — 드래그/토글 즉시 저장 */}
+              <div className="border-t border-black/5 pt-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-bold text-[var(--accent)]">입력 칸 순서와 너비</h3>
+                  {reorderStatus === "saving" && (
+                    <span className="text-xs text-[var(--muted)]">저장 중...</span>
+                  )}
+                  {reorderStatus === "success" && (
+                    <span className="text-xs font-semibold text-emerald-600">저장되었습니다.</span>
+                  )}
+                  {reorderStatus === "error" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      저장에 실패해 이전 상태로 되돌렸습니다.
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  ⠿ 핸들을 드래그해 순서를 바꾸고, 오른쪽 버튼으로 반칸/한 줄 전체를 고르면 즉시 저장되어 실제 페이지에 반영됩니다.
+                  옆에 짝이 없는 반칸은 빈자리가 생기지 않도록 자동으로 한 줄 전체를 씁니다. (모바일에서는 항상 한 줄에 하나씩 표시)
+                </p>
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">칸 목록</p>
+                    <SortableLabelList
+                      items={resFieldOrder.map((id) => {
+                        const meta = RESERVATION_FIELDS.find((f) => f.id === id);
+                        const wide = resWide.has(id);
+                        return {
+                          id,
+                          label: (meta?.label ?? id) + (meta?.required ? " *" : ""),
+                          extra: (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReservationWide(id)}
+                              className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                                wide
+                                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                                  : "border-black/15 text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]"
+                              }`}
+                            >
+                              {wide ? "한 줄 전체" : "반칸"}
+                            </button>
+                          ),
+                        };
+                      })}
+                      onReorder={handleReorderReservationFields}
+                    />
+                    <p className="text-[11px] text-[var(--muted)] mt-3">* 표시는 필수 입력 항목입니다.</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[var(--muted)] mb-3">미리보기 (PC 화면 배치)</p>
+                    <div className="rounded-2xl bg-[var(--mist)] p-4 grid grid-cols-2 gap-2">
+                      {layoutReservationFields(resFieldOrder, resWide).map((slot) => (
+                        <div
+                          key={slot.id}
+                          className={`rounded-lg border border-black/15 bg-white px-3 py-2 text-[11px] text-[var(--muted)] truncate ${
+                            slot.full ? "col-span-2" : ""
+                          }`}
+                        >
+                          {siteContent[reservationPlaceholderKey(slot.id)] ??
+                            RESERVATION_TEXT_DEFAULTS[reservationPlaceholderKey(slot.id)]}
+                          {slot.autoFull && (
+                            <span className="ml-1 text-[10px] text-[var(--accent)]">(자동 확장)</span>
+                          )}
+                        </div>
+                      ))}
+                      <div className="col-span-2 mt-1 rounded-full border border-black/30 py-1.5 text-center text-[11px] font-semibold text-[var(--ink)]">
+                        {siteContent.reservation_submit ?? RESERVATION_TEXT_DEFAULTS.reservation_submit}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 문구 편집 — 클릭하면 편집, 상단 "변경사항 저장"으로 반영 */}
+              <div className="border-t border-black/5 pt-6">
+                <h3 className="text-sm font-bold text-[var(--accent)] mb-1">예약 섹션 문구</h3>
+                <p className="text-xs text-[var(--muted)] mb-4">
+                  각 항목을 클릭하면 편집할 수 있습니다. 입력 칸 문구는 고객이 입력하기 전 칸 안에 흐리게 보이는 안내입니다.
+                  수정 후 상단의 <span className="font-semibold">변경사항 저장</span> 버튼을 눌러야 반영됩니다.
+                </p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[RESERVATION_INTRO_TEXT, RESERVATION_PLACEHOLDER_TEXT, RESERVATION_BUTTON_TEXT].map((group) => (
+                    <PriceTextCard
+                      key={group.cardId}
+                      group={group}
+                      getValue={(key) => siteContent[key] ?? RESERVATION_TEXT_DEFAULTS[key] ?? ""}
+                      onChange={handleTextChange}
+                      editingKey={editingPriceKey}
+                      setEditingKey={setEditingPriceKey}
+                    />
+                  ))}
                 </div>
               </div>
             </form>
