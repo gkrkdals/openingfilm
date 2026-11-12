@@ -34,17 +34,25 @@ import {
   type PriceTextGroup,
 } from "../components/priceCards";
 import {
-  RESERVATION_FIELDS,
+  CUSTOM_FIELDS_MAX,
+  CUSTOM_LABEL_MAX,
+  RESERVATION_BUTTON_TEXT,
+  RESERVATION_CUSTOM_KEY,
+  RESERVATION_HIDDEN_KEY,
+  RESERVATION_INTRO_TEXT,
   RESERVATION_ORDER_KEY,
   RESERVATION_WIDE_KEY,
-  RESERVATION_INTRO_TEXT,
-  RESERVATION_BUTTON_TEXT,
-  RESERVATION_PLACEHOLDER_TEXT,
-  RESERVATION_TEXT_DEFAULTS,
-  layoutReservationFields,
+  getReservationFields,
+  newCustomFieldId,
+  parseCustomFields,
+  parseReservationExtra,
   reservationFieldOrder,
-  reservationPlaceholderKey,
+  reservationHiddenIds,
+  reservationPlaceholder,
+  reservationPlaceholderGroup,
+  reservationText,
   reservationWideIds,
+  visibleReservationLayout,
 } from "../components/reservationFields";
 
 // Define TypeScript types corresponding to Prisma schema
@@ -84,6 +92,7 @@ interface ReservationItem {
   weddingLocation: string;
   contact: string;
   email: string | null;
+  extra: string | null;
   status: string;
   createdAt: string;
 }
@@ -596,9 +605,8 @@ export default function AdminDashboard() {
   const [priceRow1, setPriceRow1] = useState<string[]>(PRICE_ROW1_CARDS.map((c) => c.id));
   const [priceRow2, setPriceRow2] = useState<string[]>(PRICE_ROW2_CARDS.map((c) => c.id));
 
-  // 예약 폼 입력 칸 순서(id 배열)와 한 줄 전체를 쓰는 칸 id 집합
-  const [resFieldOrder, setResFieldOrder] = useState<string[]>(reservationFieldOrder());
-  const [resWide, setResWide] = useState<Set<string>>(reservationWideIds());
+  // 예약 폼 — 새로 추가할 칸 입력값
+  const [newCustomField, setNewCustomField] = useState({ label: "", required: false });
 
   // 가격 카드 텍스트 편집 — 현재 클릭해서 편집 중인 필드 key(하나만)
   const [editingPriceKey, setEditingPriceKey] = useState<string | null>(null);
@@ -616,10 +624,7 @@ export default function AdminDashboard() {
         });
         setSiteContent(contentMap);
         setPriceRow1(applyPriceOrder(PRICE_ROW1_CARDS, contentMap[PRICE_ROW1_ORDER_KEY]));
-        setPriceRow2(applyPriceOrder(PRICE_ROW2_CARDS, contentMap[PRICE_ROW2_ORDER_KEY]));
-        setResFieldOrder(reservationFieldOrder(contentMap[RESERVATION_ORDER_KEY]));
-        setResWide(reservationWideIds(contentMap[RESERVATION_WIDE_KEY]));
-      }
+        setPriceRow2(applyPriceOrder(PRICE_ROW2_CARDS, contentMap[PRICE_ROW2_ORDER_KEY]));      }
 
       // 2. Fetch portfolios
       const resPort = await fetch("/api/admin/portfolio");
@@ -1000,8 +1005,10 @@ export default function AdminDashboard() {
     }
   };
 
-  // 예약 폼 설정 값 하나를 즉시 저장. 낙관적 갱신은 호출 측에서 하고, 실패하면 rollback을 부른다.
-  const saveReservationSetting = async (key: string, value: string, prevValue: string | undefined, rollback: () => void) => {
+  // 예약 폼 설정 값 하나를 즉시 저장. 화면은 siteContent에서 바로 파생되므로 낙관적으로 갱신하고,
+  // 실패하면 이전 값으로 되돌린다.
+  const saveReservationSetting = async (key: string, value: string) => {
+    const prevValue = siteContent[key];
     setSiteContent((c) => ({ ...c, [key]: value }));
     setReorderStatus("saving");
 
@@ -1016,7 +1023,6 @@ export default function AdminDashboard() {
       setReorderStatus("success");
     } catch (err) {
       console.error(err);
-      rollback();
       setSiteContent((c) => {
         const next = { ...c };
         if (prevValue === undefined) delete next[key];
@@ -1030,27 +1036,49 @@ export default function AdminDashboard() {
   };
 
   const handleReorderReservationFields = (activeId: string, overId: string) => {
-    const oldIndex = resFieldOrder.indexOf(activeId);
-    const newIndex = resFieldOrder.indexOf(overId);
+    const order = reservationFieldOrder(siteContent);
+    const oldIndex = order.indexOf(activeId);
+    const newIndex = order.indexOf(overId);
     if (oldIndex === -1 || newIndex === -1) return;
+    saveReservationSetting(RESERVATION_ORDER_KEY, arrayMove(order, oldIndex, newIndex).join(","));
+  };
 
-    const prev = resFieldOrder;
-    const next = arrayMove(resFieldOrder, oldIndex, newIndex);
-    setResFieldOrder(next);
-    saveReservationSetting(RESERVATION_ORDER_KEY, next.join(","), siteContent[RESERVATION_ORDER_KEY], () =>
-      setResFieldOrder(prev)
-    );
+  const toggleInCsvSet = (set: Set<string>, id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return [...next].join(",");
   };
 
   const handleToggleReservationWide = (id: string) => {
-    const prev = resWide;
-    const next = new Set(resWide);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setResWide(next);
-    saveReservationSetting(RESERVATION_WIDE_KEY, [...next].join(","), siteContent[RESERVATION_WIDE_KEY], () =>
-      setResWide(prev)
+    saveReservationSetting(RESERVATION_WIDE_KEY, toggleInCsvSet(reservationWideIds(siteContent), id));
+  };
+
+  const handleToggleReservationHidden = (id: string) => {
+    saveReservationSetting(RESERVATION_HIDDEN_KEY, toggleInCsvSet(reservationHiddenIds(siteContent), id));
+  };
+
+  const handleAddCustomField = () => {
+    const label = newCustomField.label.trim().slice(0, CUSTOM_LABEL_MAX);
+    if (!label) return;
+    const defs = parseCustomFields(siteContent[RESERVATION_CUSTOM_KEY]);
+    if (defs.length >= CUSTOM_FIELDS_MAX) return;
+    const next = [...defs, { id: newCustomFieldId(), label, required: newCustomField.required }];
+    saveReservationSetting(RESERVATION_CUSTOM_KEY, JSON.stringify(next));
+    setNewCustomField({ label: "", required: false });
+  };
+
+  const handleToggleCustomRequired = (id: string) => {
+    const next = parseCustomFields(siteContent[RESERVATION_CUSTOM_KEY]).map((d) =>
+      d.id === id ? { ...d, required: !d.required } : d
     );
+    saveReservationSetting(RESERVATION_CUSTOM_KEY, JSON.stringify(next));
+  };
+
+  const handleDeleteCustomField = (id: string, label: string) => {
+    if (!confirm(`"${label}" 칸을 삭제하시겠습니까?\n이미 접수된 예약에 저장된 답변은 그대로 남습니다.`)) return;
+    const next = parseCustomFields(siteContent[RESERVATION_CUSTOM_KEY]).filter((d) => d.id !== id);
+    saveReservationSetting(RESERVATION_CUSTOM_KEY, JSON.stringify(next));
   };
 
   // 4. Reservation actions
@@ -1100,6 +1128,16 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
+  // 예약 폼 설정 화면용 파생 값 (모두 siteContent에서 계산)
+  const resFields = getReservationFields(siteContent);
+  const resOrder = reservationFieldOrder(siteContent);
+  const resWide = reservationWideIds(siteContent);
+  const resHidden = reservationHiddenIds(siteContent);
+  const resCustomCount = resFields.filter((f) => f.custom).length;
+  const resPlaceholderGroup = reservationPlaceholderGroup(resFields);
+  const resTextDefault = (key: string) =>
+    resPlaceholderGroup.fields.find((f) => f.key === key)?.default ?? reservationText(undefined, key);
 
   return (
     <div className="min-h-screen bg-[var(--paper)]">
@@ -1722,57 +1760,134 @@ export default function AdminDashboard() {
                   )}
                 </div>
                 <p className="text-xs text-[var(--muted)] mb-4">
-                  ⠿ 핸들을 드래그해 순서를 바꾸고, 오른쪽 버튼으로 반칸/한 줄 전체를 고르면 즉시 저장되어 실제 페이지에 반영됩니다.
+                  ⠿ 핸들을 드래그해 순서를 바꾸고, 오른쪽 버튼으로 너비·숨김·필수 여부를 고르면 즉시 저장되어 실제 페이지에 반영됩니다.
                   옆에 짝이 없는 반칸은 빈자리가 생기지 않도록 자동으로 한 줄 전체를 씁니다. (모바일에서는 항상 한 줄에 하나씩 표시)
                 </p>
                 <div className="grid gap-6 md:grid-cols-2">
                   <div>
                     <p className="text-xs font-bold text-[var(--muted)] mb-3">칸 목록</p>
                     <SortableLabelList
-                      items={resFieldOrder.map((id) => {
-                        const meta = RESERVATION_FIELDS.find((f) => f.id === id);
+                      items={resOrder.map((id) => {
+                        const meta = resFields.find((f) => f.id === id);
                         const wide = resWide.has(id);
+                        const hidden = resHidden.has(id);
+                        const pill = (active: boolean) =>
+                          `rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                            active
+                              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                              : "border-black/15 text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]"
+                          }`;
                         return {
                           id,
-                          label: (meta?.label ?? id) + (meta?.required ? " *" : ""),
+                          label:
+                            (meta?.label ?? id) +
+                            (meta?.required ? " *" : "") +
+                            (meta?.custom ? " (추가)" : "") +
+                            (hidden ? " — 숨김" : ""),
                           extra: (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleReservationWide(id)}
-                              className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
-                                wide
-                                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
-                                  : "border-black/15 text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]"
-                              }`}
-                            >
-                              {wide ? "한 줄 전체" : "반칸"}
-                            </button>
+                            <>
+                              {meta?.custom && (
+                                <button type="button" onClick={() => handleToggleCustomRequired(id)} className={pill(meta.required)}>
+                                  {meta.required ? "필수" : "선택"}
+                                </button>
+                              )}
+                              {meta?.hideable && (
+                                <button type="button" onClick={() => handleToggleReservationHidden(id)} className={pill(hidden)}>
+                                  {hidden ? "숨김" : "표시"}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleReservationWide(id)}
+                                disabled={hidden}
+                                className={`${pill(wide)} disabled:opacity-40 disabled:cursor-not-allowed`}
+                              >
+                                {wide ? "한 줄 전체" : "반칸"}
+                              </button>
+                              {meta?.custom && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCustomField(id, meta.label)}
+                                  className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 cursor-pointer"
+                                >
+                                  삭제
+                                </button>
+                              )}
+                            </>
                           ),
                         };
                       })}
                       onReorder={handleReorderReservationFields}
                     />
-                    <p className="text-[11px] text-[var(--muted)] mt-3">* 표시는 필수 입력 항목입니다.</p>
+                    <p className="text-[11px] text-[var(--muted)] mt-3">
+                      * 표시는 필수 입력 항목입니다. 예식 날짜·시간·장소·연락처는 예약 접수에 꼭 필요해 숨길 수 없습니다.
+                    </p>
+
+                    {/* 새 칸 추가 */}
+                    <div className="mt-5 rounded-2xl border border-dashed border-black/15 p-4">
+                      <p className="text-xs font-bold text-[var(--ink)] mb-1">새 칸 추가</p>
+                      <p className="text-[11px] text-[var(--muted)] mb-3">
+                        예: 신부 연락처, 추천인. 추가한 칸은 목록 맨 아래에 생기며, 위에서 순서·너비를 바꿀 수 있습니다.
+                        고객이 입력한 내용은 예약 내역과 구글 시트의 &quot;추가 항목&quot;에 함께 기록됩니다.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={newCustomField.label}
+                          maxLength={CUSTOM_LABEL_MAX}
+                          onChange={(e) => setNewCustomField((s) => ({ ...s, label: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              handleAddCustomField();
+                            }
+                          }}
+                          placeholder="칸 이름"
+                          className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs focus:border-[var(--accent)] focus:outline-none"
+                        />
+                        <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newCustomField.required}
+                            onChange={(e) => setNewCustomField((s) => ({ ...s, required: e.target.checked }))}
+                          />
+                          필수
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomField}
+                          disabled={!newCustomField.label.trim() || resCustomCount >= CUSTOM_FIELDS_MAX}
+                          className="rounded-full bg-[var(--ink)] text-white px-4 py-2 text-xs font-semibold hover:bg-[var(--accent)] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          추가
+                        </button>
+                      </div>
+                      {resCustomCount >= CUSTOM_FIELDS_MAX && (
+                        <p className="text-[11px] text-rose-600 mt-2">추가 칸은 최대 {CUSTOM_FIELDS_MAX}개까지 만들 수 있습니다.</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-[var(--muted)] mb-3">미리보기 (PC 화면 배치)</p>
                     <div className="rounded-2xl bg-[var(--mist)] p-4 grid grid-cols-2 gap-2">
-                      {layoutReservationFields(resFieldOrder, resWide).map((slot) => (
-                        <div
-                          key={slot.id}
-                          className={`rounded-lg border border-black/15 bg-white px-3 py-2 text-[11px] text-[var(--muted)] truncate ${
-                            slot.full ? "col-span-2" : ""
-                          }`}
-                        >
-                          {siteContent[reservationPlaceholderKey(slot.id)] ??
-                            RESERVATION_TEXT_DEFAULTS[reservationPlaceholderKey(slot.id)]}
-                          {slot.autoFull && (
-                            <span className="ml-1 text-[10px] text-[var(--accent)]">(자동 확장)</span>
-                          )}
-                        </div>
-                      ))}
+                      {visibleReservationLayout(siteContent).map((slot) => {
+                        const meta = resFields.find((f) => f.id === slot.id)!;
+                        return (
+                          <div
+                            key={slot.id}
+                            className={`rounded-lg border border-black/15 bg-white px-3 py-2 text-[11px] text-[var(--muted)] truncate ${
+                              slot.full ? "col-span-2" : ""
+                            }`}
+                          >
+                            {reservationPlaceholder(siteContent, meta)}
+                            {slot.autoFull && (
+                              <span className="ml-1 text-[10px] text-[var(--accent)]">(자동 확장)</span>
+                            )}
+                          </div>
+                        );
+                      })}
                       <div className="col-span-2 mt-1 rounded-full border border-black/30 py-1.5 text-center text-[11px] font-semibold text-[var(--ink)]">
-                        {siteContent.reservation_submit ?? RESERVATION_TEXT_DEFAULTS.reservation_submit}
+                        {reservationText(siteContent, "reservation_submit")}
                       </div>
                     </div>
                   </div>
@@ -1787,11 +1902,11 @@ export default function AdminDashboard() {
                   수정 후 상단의 <span className="font-semibold">변경사항 저장</span> 버튼을 눌러야 반영됩니다.
                 </p>
                 <div className="grid gap-4 md:grid-cols-3">
-                  {[RESERVATION_INTRO_TEXT, RESERVATION_PLACEHOLDER_TEXT, RESERVATION_BUTTON_TEXT].map((group) => (
+                  {[RESERVATION_INTRO_TEXT, resPlaceholderGroup, RESERVATION_BUTTON_TEXT].map((group) => (
                     <PriceTextCard
                       key={group.cardId}
                       group={group}
-                      getValue={(key) => siteContent[key] ?? RESERVATION_TEXT_DEFAULTS[key] ?? ""}
+                      getValue={(key) => siteContent[key] ?? resTextDefault(key)}
                       onChange={handleTextChange}
                       editingKey={editingPriceKey}
                       setEditingKey={setEditingPriceKey}
@@ -1817,6 +1932,7 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3">신랑 / 신부</th>
                       <th className="px-4 py-3">예식일시 / 장소</th>
                       <th className="px-4 py-3">연락처</th>
+                      <th className="px-4 py-3">추가 항목</th>
                       <th className="px-4 py-3">신청시간</th>
                       <th className="px-4 py-3 text-center">상태</th>
                       <th className="px-4 py-3 text-right">관리</th>
@@ -1837,6 +1953,15 @@ export default function AdminDashboard() {
                           {res.email ? (
                             <p className="text-[var(--muted)] mt-0.5">{res.email}</p>
                           ) : null}
+                        </td>
+                        <td className="px-4 py-4 text-[var(--ink-soft)]">
+                          {parseReservationExtra(res.extra).length > 0
+                            ? parseReservationExtra(res.extra).map((entry, idx) => (
+                                <p key={idx} className={idx > 0 ? "mt-0.5" : ""}>
+                                  <span className="text-[var(--muted)]">{entry.label}:</span> {entry.value}
+                                </p>
+                              ))
+                            : <span className="text-[var(--muted)]">-</span>}
                         </td>
                         <td className="px-4 py-4 text-[var(--muted)]">
                           {new Date(res.createdAt).toLocaleString("ko-KR")}
@@ -1871,7 +1996,7 @@ export default function AdminDashboard() {
                     ))}
                     {reservations.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-[var(--muted)]">
+                        <td colSpan={7} className="text-center py-12 text-[var(--muted)]">
                           아직 접수된 예약이 없습니다.
                         </td>
                       </tr>

@@ -21,6 +21,21 @@ if (fs.existsSync(envPath)) {
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+// app/components/reservationFields.ts의 formatReservationExtra와 같은 형식 ("추천인: 홍길동 / ...")
+function formatExtra(json) {
+  if (!json) return "";
+  try {
+    const entries = JSON.parse(json);
+    if (!Array.isArray(entries)) return "";
+    return entries
+      .filter((e) => e && typeof e.label === "string" && typeof e.value === "string")
+      .map((e) => `${e.label}: ${e.value}`)
+      .join(" / ");
+  } catch {
+    return "";
+  }
+}
+
 async function main() {
   const url = process.env.SHEETS_WEBHOOK_URL;
   if (!url) {
@@ -52,6 +67,7 @@ async function main() {
         wedding_location: r.weddingLocation,
         contact: r.contact,
         email: r.email,
+        extra: formatExtra(r.extra),
         created_at: r.createdAt.toISOString(),
       })),
     }),

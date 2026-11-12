@@ -43,6 +43,9 @@ model Reservation {
   weddingLocation String
   contact         String
   email           String?
+  // 관리자가 추가한 입력 칸의 답변. JSON 배열 [{"label": "추천인", "value": "홍길동"}].
+  // 칸 이름을 함께 저장해 두어, 나중에 칸 이름을 바꾸거나 삭제해도 과거 예약의 의미가 유지된다.
+  extra           String?
   status          String   @default("pending") // 'pending' | 'approved' | 'cancelled'
   createdAt       DateTime @default(now())
 }

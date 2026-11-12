@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ReservationFormField } from "./reservationFields";
+import { CUSTOM_VALUE_MAX, type ReservationFormField } from "./reservationFields";
 
 export default function ReservationForm({
   fields,
@@ -35,6 +35,9 @@ export default function ReservationForm({
     const wedding_location = formData.get("예식 장소") as string;
     const contact = formData.get("연락처") as string;
     const email = formData.get("메일 주소") as string;
+    const extra = Object.fromEntries(
+      fields.filter((f) => f.custom).map((f) => [f.id, (formData.get(f.name) as string | null) ?? ""])
+    );
 
     // Validation
     if (!wedding_date || !wedding_time || !wedding_location || !contact) {
@@ -57,12 +60,19 @@ export default function ReservationForm({
           wedding_location,
           contact,
           email,
+          extra,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        // 입력 문제(400)는 서버 메시지를 그대로 보여준다 (예: 관리자가 추가한 필수 칸 누락)
+        if (res.status === 400 && data.error) {
+          setFormStatus("error");
+          setFormMessage(data.error);
+          return;
+        }
         throw new Error(data.error || "Submission failed");
       }
 
@@ -85,7 +95,8 @@ export default function ReservationForm({
             name={field.name}
             type={field.type}
             required={field.required}
-            aria-label={field.name}
+            maxLength={field.custom ? CUSTOM_VALUE_MAX : undefined}
+            aria-label={field.custom ? field.placeholder : field.name}
             className={`rounded-xl border border-black/15 bg-white px-4 py-3 text-sm text-[var(--ink)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none ${
               field.full ? "md:col-span-2" : ""
             }`}

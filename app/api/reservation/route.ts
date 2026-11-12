@@ -1,5 +1,11 @@
 import { NextResponse, after } from "next/server";
 import prisma from "@/utils/db";
+import {
+  RESERVATION_CUSTOM_KEY,
+  formatReservationExtra,
+  parseReservationExtra,
+  validateReservationExtra,
+} from "@/app/components/reservationFields";
 
 // 예약 내용을 구글 스프레드시트로 전송 (docs/google-sheets-setup.md 참고).
 // 부가 동작이므로 실패해도 예약 접수에는 영향을 주지 않는다.
@@ -11,6 +17,7 @@ async function sendToSheet(reservation: {
   weddingLocation: string;
   contact: string;
   email: string | null;
+  extra: string | null;
   createdAt: Date;
 }) {
   const url = process.env.SHEETS_WEBHOOK_URL;
@@ -29,6 +36,7 @@ async function sendToSheet(reservation: {
         wedding_location: reservation.weddingLocation,
         contact: reservation.contact,
         email: reservation.email,
+        extra: formatReservationExtra(parseReservationExtra(reservation.extra)),
         created_at: reservation.createdAt.toISOString(),
       }),
       signal: AbortSignal.timeout(10_000),
@@ -52,6 +60,7 @@ export async function POST(request: Request) {
       wedding_location,
       contact,
       email,
+      extra,
     } = await request.json();
 
     if (!wedding_date || !wedding_time || !wedding_location || !contact) {
@@ -59,6 +68,16 @@ export async function POST(request: Request) {
         { error: "필수 입력 항목(예식 날짜, 시간, 장소, 연락처)이 누락되었습니다." },
         { status: 400 }
       );
+    }
+
+    // 관리자가 추가한 칸은 현재 정의 기준으로 검증한다 (정의에 없는 키는 버림)
+    const customSetting = await prisma.siteContent.findUnique({ where: { key: RESERVATION_CUSTOM_KEY } });
+    const extraResult = validateReservationExtra(
+      { [RESERVATION_CUSTOM_KEY]: customSetting?.value },
+      extra
+    );
+    if (!extraResult.ok) {
+      return NextResponse.json({ error: extraResult.error }, { status: 400 });
     }
 
     const reservation = await prisma.reservation.create({
@@ -70,6 +89,7 @@ export async function POST(request: Request) {
         weddingLocation: wedding_location,
         contact,
         email: email || null,
+        extra: extraResult.entries.length > 0 ? JSON.stringify(extraResult.entries) : null,
         status: "pending",
       },
     });
